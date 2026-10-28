@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ona huyu msee</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="max-w-md w-full bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-2xl">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-orange-500/10 text-orange-500 rounded-full mb-3">
+        <i class="fa-solid fa-file-pdf text-3xl"></i>
+      </div>
+      <h1 class="text-2xl font-bold text-white">mzee jaribu hii</h1>
+      <p class="text-slate-400 text-sm mt-1">ukiweza nitakutii.</p>
+    </div>
+
+    <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 mb-6 flex items-center justify-between">
+      <span class="text-slate-300">Required Amount:</span>
+      <span class="text-xl font-bold text-orange-500">KES <%= price.toLocaleString() %></span>
+    </div>
+
+    <form id="paymentForm" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Phone Number</label>
+        <input type="tel" id="phone" placeholder="2547XXXXXXXX" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-orange-500"/>
+      </div>
+
+      <button type="submit" id="payBtn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg transition-colors">
+        Trigger STK Push
+      </button>
+    </form>
+
+    <div id="statusBox" class="mt-6 hidden p-4 rounded-lg border text-sm text-center"></div>
+  </div>
+
+  <script>
+    let pollInterval = null;
+
+    document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('phone').value;
+      const statusBox = document.getElementById('statusBox');
+      const payBtn = document.getElementById('payBtn');
+
+      payBtn.disabled = true;
+      statusBox.className = 'mt-6 p-4 rounded-lg border bg-slate-900 border-slate-700 text-slate-300 block';
+      statusBox.innerHTML = 'Sending STK Push... Check your phone.';
+
+      const res = await fetch('/api/trigger-stk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        startPolling(data.checkoutRequestID);
+      } else {
+        statusBox.className = 'mt-6 p-4 rounded-lg border bg-red-950/40 border-red-500/50 text-red-400 block';
+        statusBox.innerHTML = 'Failed to send STK Push.';
+        payBtn.disabled = false;
+      }
+    });
+
+    function startPolling(id) {
+      pollInterval = setInterval(async () => {
+        const res = await fetch(`/api/check-status?id=${id}`);
+        const data = await res.json();
+        const statusBox = document.getElementById('statusBox');
+        const payBtn = document.getElementById('payBtn');
+
+        if (data.status === 'REJECTED') {
+          clearInterval(pollInterval);
+          statusBox.className = 'mt-6 p-4 rounded-lg border bg-red-950/40 border-red-500/50 text-red-400 font-bold block';
+          statusBox.innerHTML = `${data.message} <br><span class="text-xs font-normal">Umelipa KES ${data.amountPaid}.00 pekee na price ni KES 10,000!</span>`;
+          payBtn.disabled = false;
+        } else if (data.status === 'UNDERPAID') {
+          clearInterval(pollInterval);
+          statusBox.className = 'mt-6 p-4 rounded-lg border bg-amber-950/40 border-amber-500/50 text-amber-400 font-bold block';
+          statusBox.innerHTML = `${data.message}`;
+          payBtn.disabled = false;
+        } else if (data.status === 'PAID') {
+          clearInterval(pollInterval);
+          statusBox.className = 'mt-6 p-4 rounded-lg border bg-emerald-950/40 border-emerald-500/50 text-emerald-400 font-bold block';
+          statusBox.innerHTML = 'Payment Verified! Downloading document...';
+          window.location.href = `/api/download-pdf?token=${data.downloadToken}&id=${id}`;
+        }
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
